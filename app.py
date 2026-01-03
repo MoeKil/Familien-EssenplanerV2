@@ -1,5 +1,5 @@
 # -----------------------------
-# Familien-Essensplaner mit Streamlit
+# Familien-Essensplaner Streamlit App
 # -----------------------------
 import streamlit as st
 import pandas as pd
@@ -7,7 +7,7 @@ import random
 import requests
 
 # -----------------------------
-# Google Sheet URL (CSV Export)
+# Google Sheet CSV
 # -----------------------------
 SHEET_URL = "https://docs.google.com/spreadsheets/d/1X9g21WLcgmcqsdrNSCCoUm4scz1-dLp2Uba13SVEZt4/export?format=csv"
 
@@ -16,23 +16,30 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/1X9g21WLcgmcqsdrNSCCoUm4scz1
 # -----------------------------
 @st.cache_data
 def lade_gerichte():
-    df = pd.read_csv(SHEET_URL, encoding="utf-8-sig")
-    gerichte = {}
-
-    # Prüfen, welche Spalten vorhanden sind
-    if not set(["Gericht","Kategorie","Zutat","Menge","Einheit"]).issubset(df.columns):
-        st.error("Google Sheet muss die Spalten: Gericht, Kategorie, Zutat, Menge, Einheit enthalten!")
+    try:
+        df = pd.read_csv(SHEET_URL, encoding="utf-8-sig")
+    except Exception as e:
+        st.error(f"Fehler beim Laden des Sheets: {e}")
         return {}
 
+    gerichte = {}
+
+    # Prüfen, ob die notwendigen Spalten vorhanden sind
+    required_columns = ["Gericht","Kategorie","Zutat","Menge","Einheit"]
+    if not set(required_columns).issubset(df.columns):
+        st.error(f"Google Sheet muss die Spalten enthalten: {required_columns}")
+        return {}
+
+    # Gerichte aus Sheet zusammenbauen
     for _, row in df.iterrows():
         name = row['Gericht']
         kategorie = row['Kategorie']
-        wochenende = row.get('Wochenende', False)  # optional Spalte für Wochenende
+        wochenende = row.get('Wochenende', False)  # optional
 
-        # Zutaten-Dict aufbauen
+        # Zutaten-Dict
         zutaten_dict = {row['Zutat']: (row['Menge'], row['Einheit'])}
 
-        # Falls Gericht schon existiert (mehrere Zutaten-Zeilen), zusammenführen
+        # Mehrere Zeilen pro Gericht zusammenführen
         if name in gerichte:
             gerichte[name]['zutaten'].update(zutaten_dict)
         else:
@@ -128,13 +135,11 @@ st.title("👨‍👩‍👧‍👦 Familien-Essensplaner")
 if not gerichte:
     st.warning("Keine Gerichte geladen. Bitte Google Sheet prüfen.")
 else:
-    # Dropdown für Auswahl
-    option = st.selectbox(
-        "Gericht auswählen",
-        ["Zufall", "Vegetarisch"] + list(gerichte.keys())
-    )
+    # Dropdown: immer mindestens "Zufall" + "Vegetarisch"
+    options = ["Zufall", "Vegetarisch"] + list(gerichte.keys())
+    option = st.selectbox("Gericht auswählen", options)
 
-    # Auswahl auswerten
+    # Verhalten je nach Auswahl
     if option == "Zufall":
         gericht = random.choice(list(gerichte.keys()))
         st.write(f"**Ausgewähltes Gericht:** {gericht}")
