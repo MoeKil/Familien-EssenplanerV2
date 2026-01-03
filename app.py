@@ -24,22 +24,18 @@ def lade_gerichte():
 
     gerichte = {}
 
-    # Prüfen, ob die notwendigen Spalten vorhanden sind
     required_columns = ["Gericht","Kategorie","Zutat","Menge","Einheit"]
     if not set(required_columns).issubset(df.columns):
         st.error(f"Google Sheet muss die Spalten enthalten: {required_columns}")
         return {}
 
-    # Gerichte aus Sheet zusammenbauen
     for _, row in df.iterrows():
         name = row['Gericht']
         kategorie = row['Kategorie']
-        wochenende = row.get('Wochenende', False)  # optional
+        wochenende = row.get('Wochenende', False)
 
-        # Zutaten-Dict
         zutaten_dict = {row['Zutat']: (row['Menge'], row['Einheit'])}
 
-        # Mehrere Zeilen pro Gericht zusammenführen
         if name in gerichte:
             gerichte[name]['zutaten'].update(zutaten_dict)
         else:
@@ -54,9 +50,9 @@ def lade_gerichte():
 gerichte = lade_gerichte()
 
 # -----------------------------
-# Wochenplan generieren
+# Wochenplan generieren (optional Regeln)
 # -----------------------------
-def generiere_wochenplan(gerichte, tage=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]):
+def generiere_wochenplan(gerichte, tage):
     plan = {}
     letzte_kategorie = None
     letzte_gerichte = []
@@ -89,8 +85,12 @@ def generiere_wochenplan(gerichte, tage=["Montag","Dienstag","Mittwoch","Donners
 # -----------------------------
 def erstelle_einkaufsliste(plan):
     einkauf = {}
-    for gericht in plan.values():
-        for zutat, (menge, einheit) in gerichte[gericht]["zutaten"].items():
+    for item in plan.values():
+        # vegetarisches Rezept -> dict
+        if isinstance(item, dict):
+            continue
+        # normales Gericht
+        for zutat, (menge, einheit) in gerichte[item]["zutaten"].items():
             if zutat not in einkauf:
                 einkauf[zutat] = [0, einheit]
             einkauf[zutat][0] += menge
@@ -135,43 +135,41 @@ st.title("👨‍👩‍👧‍👦 Familien-Essensplaner")
 if not gerichte:
     st.warning("Keine Gerichte geladen. Bitte Google Sheet prüfen.")
 else:
-    # Dropdown: immer mindestens "Zufall" + "Vegetarisch"
-    options = ["Zufall", "Vegetarisch"] + list(gerichte.keys())
-    option = st.selectbox("Gericht auswählen", options)
+    tage = ["Montag","Dienstag","Mittwoch","Donnerstag","Freitag","Samstag","Sonntag"]
+    tage_auswahl = {}
 
-    # Verhalten je nach Auswahl
-    if option == "Zufall":
-        gericht = random.choice(list(gerichte.keys()))
-        st.write(f"**Ausgewähltes Gericht:** {gericht}")
-        st.write("**Zutaten:**")
-        for z, (menge, einheit) in gerichte[gericht]['zutaten'].items():
-            st.write(f"- {z}: {menge} {einheit}")
+    # Dropdown pro Wochentag
+    for tag in tage:
+        options = ["Zufall", "Vegetarisch"] + list(gerichte.keys())
+        tage_auswahl[tag] = st.selectbox(f"{tag} auswählen:", options=options, key=tag)
 
-    elif option == "Vegetarisch":
-        rezept = zufall_vegetarisches_rezept()
-        if rezept:
-            st.write(f"**{rezept['name']}**")
-            st.write("**Zutaten:**")
-            for z in rezept["zutaten"]:
-                st.write(f"- {z}")
-            st.markdown(f"[Zum Rezept]({rezept['link']})")
-        else:
-            st.write("Leider konnte kein vegetarisches Rezept gefunden werden.")
-
-    else:
-        st.write(f"**Ausgewähltes Gericht:** {option}")
-        st.write("**Zutaten:**")
-        for z, (menge, einheit) in gerichte[option]['zutaten'].items():
-            st.write(f"- {z}: {menge} {einheit}")
-
-    # Wochenplan Button
     if st.button("📅 Wochenplan erstellen"):
-        plan = generiere_wochenplan(gerichte)
+        plan = {}
+        for tag, auswahl in tage_auswahl.items():
+            if auswahl == "Zufall":
+                plan[tag] = random.choice(list(gerichte.keys()))
+            elif auswahl == "Vegetarisch":
+                plan[tag] = zufall_vegetarisches_rezept()
+            else:
+                plan[tag] = auswahl
+
         st.subheader("Wochenplan")
         for tag, gericht in plan.items():
-            st.write(f"**{tag}:** {gericht}")
+            if isinstance(gericht, dict):
+                # vegetarisches Rezept
+                st.write(f"**{tag}: {gericht['name']}**")
+                st.write("Zutaten:")
+                for z in gericht['zutaten']:
+                    st.write(f"- {z}")
+                st.markdown(f"[Zum Rezept]({gericht['link']})")
+            else:
+                # normales Gericht
+                st.write(f"**{tag}: {gericht}**")
+                st.write("Zutaten:")
+                for z, (menge, einheit) in gerichte[gericht]['zutaten'].items():
+                    st.write(f"- {z}: {menge} {einheit}")
 
-        einkauf = erstelle_einkaufsliste(plan)
         st.subheader("🛒 Einkaufsliste")
+        einkauf = erstelle_einkaufsliste(plan)
         for zutat, (menge, einheit) in einkauf.items():
             st.write(f"- {zutat}: {menge} {einheit}")
